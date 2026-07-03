@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -7,6 +8,16 @@ from app.models.user import User
 from app.auth import hash_password, verify_password, create_access_token, get_current_user
 
 app = FastAPI(title="csoc_api")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 class UserCreate(BaseModel):
     username: str
@@ -16,6 +27,13 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class UserProfileUpdate(BaseModel):
+    bio: str | None = None
+    location: str | None = None
+    course: str | None = None
+    contact: str | None = None
+    interests: str | None = None
 
 @app.get("/")
 async def health_check():
@@ -28,7 +46,40 @@ def list_users(db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(current_user: User = Depends(get_current_user)):
-    return {"id": str(current_user.id), "username": current_user.username, "email": current_user.email}
+    return {
+        "id": str(current_user.id),
+        "username": current_user.username,
+        "email": current_user.email,
+        "bio": current_user.bio,
+        "location": current_user.location,
+        "course": current_user.course,
+        "contact": current_user.contact,
+        "interests": current_user.interests,
+    }
+
+@app.patch("/me")
+def update_profile(payload: UserProfileUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if payload.bio:
+        current_user.bio = payload.bio
+    if payload.location:
+        current_user.location = payload.location
+    if payload.course:
+        current_user.course = payload.course
+    if payload.contact:
+        current_user.contact = payload.contact
+    if payload.interests:
+        current_user.interests = payload.interests
+    db.commit()
+    db.refresh(current_user)
+    return {
+        "username": current_user.username,
+        "email": current_user.email,
+        "bio": current_user.bio,
+        "location": current_user.location,
+        "course": current_user.course,
+        "contact": current_user.contact,
+        "interests": current_user.interests,
+    }
 
 @app.post("/users")
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
