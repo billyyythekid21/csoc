@@ -1,41 +1,47 @@
-import {useEffect, useState} from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
 
 function Home() {
-    const navigate = useNavigate()
-    const [user, setUser] = useState<{ username: string; email: string } | null>(null)
+	const navigate = useNavigate()
+	const [user, setUser] = useState<{ username: string; email: string } | null>(null)
 
-    useEffect(() => {
-        const token = localStorage.getItem("token")
-        if (!token) {
-            navigate("/login")
-            return
-        }
-        axios.get("http://localhost:8000/me", {
-            headers: { Authorization: `Bearer ${token}` },
-        })
-        .then(res => setUser(res.data))
-            .catch(() => {
-                localStorage.removeItem("token")
-                navigate("/login")
-            })
-    }, [])
+	const token = localStorage.getItem("token")
 
-    const logout = () => {
-        localStorage.removeItem("token")
-        navigate("/login")
-    }
+	useEffect(() => {
+		if (!token) {
+			navigate("/login")
+			return
+		}
+		axios.get("http://localhost:8000/me", {
+			headers: { Authorization: `Bearer ${token}` },
+		})
+			.then(res => setUser(res.data))
+			.catch(() => {
+				localStorage.removeItem("token")
+				navigate("/login")
+			})
+	}, [])
 
-    if (!user) return <div>Loading...</div>
+	const logout = () => {
+		localStorage.removeItem("token")
+		navigate("/login")
+	}
 
-    return (
-        <div>
-            <h1>Welcome, {user.username}</h1>
-            <p>{user.email}</p>
-            <button onClick={logout}>Logout</button>
-        </div>
-    )
+	if (!user) return <div>Loading...</div>
+
+	return (
+		<div>
+			<h1>Welcome, {user.username}</h1>
+			<p>{user.email}</p>
+			<button onClick={() => navigate("/profile")}>Edit Profile</button>
+			<button onClick={() => navigate("/match")}>Find Connections</button>
+			<button onClick={() => navigate("/events")}>Events</button>
+			<button onClick={() => navigate("/matches")}>Matches</button>
+			<button onClick={() => navigate("/search")}>Search</button>
+			<button onClick={logout}>Logout</button>
+		</div>
+	)
 }
 
 export default Home
