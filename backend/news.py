@@ -44,7 +44,9 @@ def send_to_subscriber(phone: str, topic: str) -> dict:
             twilio.messages.create(
                 to=f"whatsapp:{phone}",
                 from_=FROM_NUMBER,
-                body=f"({i+1}/{len(chunks)})\n{chunk}" if len(chunks) > 1 else chunk,
+                body=f"({i + 1}/{len(chunks)})\n{chunk}"
+                if len(chunks) > 1
+                else chunk,
             )
         return {"status": "success", "preview": news[:100]}
     except Exception as e:

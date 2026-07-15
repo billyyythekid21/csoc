@@ -1,79 +1,207 @@
-import React, { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import axios from "axios"
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 interface UserProfile {
-	username: string
-	email: string
-	bio: string
-	location: string
-	course: string
-	contact: string
-	interests: string
+	username: string;
+	email: string;
+	bio: string;
+	location: string;
+	course: string;
+	contact: string;
+	interests: string;
 }
 
 function Profile() {
-	const navigate = useNavigate()
-	const [profile, setProfile] = useState<UserProfile | null>(null)
-	const [form, setForm] = useState({ bio: "", location: "", course: "", contact: "", interests: "" })
-	const [saved, setSaved] = useState<boolean>(false)
+	const navigate = useNavigate();
+	const [profile, setProfile] = useState<UserProfile | null>(null);
+	const [form, setForm] = useState({
+		bio: '',
+		location: '',
+		course: '',
+		contact: '',
+		interests: '',
+	});
+	const [saved, setSaved] = useState<boolean>(false);
 
-	const token = localStorage.getItem("token")
+	const token = localStorage.getItem('token');
 
 	useEffect(() => {
-		if (!token) { navigate("/login"); return; }
+		if (!token) {
+			navigate('/login');
+			return;
+		}
 
-		axios.get("http://localhost:8000/me", {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-			.then(res => {
-				setProfile(res.data)
-				setForm({
-					bio: res.data.bio || "",
-					location: res.data.location || "",
-					course: res.data.course || "",
-					contact: res.data.contact || "",
-					interests: res.data.interests || "",
-				})
+		axios
+			.get('http://localhost:8000/me', {
+				headers: { Authorization: `Bearer ${token}` },
 			})
-			.catch(() => { localStorage.removeItem("token"); navigate("/login") })
-	}, [])
+			.then((res) => {
+				setProfile(res.data);
+				setForm({
+					bio: res.data.bio || '',
+					location: res.data.location || '',
+					course: res.data.course || '',
+					contact: res.data.contact || '',
+					interests: res.data.interests || '',
+				});
+			})
+			.catch(() => {
+				localStorage.removeItem('token');
+				navigate('/login');
+			});
+	}, []);
 
-	const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-		setForm({ ...form, [e.target.name]: e.target.value })
-	}
+	const handleChange = (
+		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+	) => {
+		setForm({ ...form, [e.target.name]: e.target.value });
+	};
+
+	const logout = () => {
+		localStorage.removeItem('token');
+		navigate('/login');
+	};
+
+	const deleteAccount = async () => {
+		if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return
+		await axios.delete('http://localhost:8000/me', {
+			headers: { Authorization: `Bearer ${token}` },
+		})
+		localStorage.removeItem('token');
+		navigate('/signup');
+	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault()
-		await axios.patch("http://localhost:8000/me", form, {
-			headers: { Authorization: `Bearer ${token}` }
-		})
-		setSaved(true)
-		setTimeout(() => { setSaved(false) }, 2000)
-	}
+		e.preventDefault();
+		await axios.patch('http://localhost:8000/me', form, {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+		setSaved(true);
+		setTimeout(() => {
+			setSaved(false);
+		}, 2000);
+	};
 
-	if (!profile) return <div>Loading...</div>
+	if (!profile)
+		return (
+			<div className="min-h-screen bg-black flex items-center justify-center">
+				<div className="text-white text-2xl font-bold">Loading...</div>
+			</div>
+		);
 
 	return (
-		<div>
-			<h1>{profile.username}</h1>
-			<p>{profile.email}</p>
-			<form onSubmit={handleSubmit}>
-				<textarea name="bio" placeholder="Bio" value={form.bio} onChange={handleChange} />
-				<input name="course" placeholder="Course (e.g. Computer Science)"
-					   value={form.course} onChange={handleChange} />
-				<input name="location" placeholder="Location (e.g. Melbourne)"
-					   value={form.location} onChange={handleChange} />
-				<input name="contact" placeholder="Contact (e.g. Discord handle)"
-					   value={form.contact} onChange={handleChange} />
-				<input name="interests" placeholder="Interests (e.g. hiking, chess, ml)"
-					   value={form.interests} onChange={handleChange} />
-				<button type="submit">Save</button>
-			</form>
-			{saved && <p>Saved!</p>}
-			<button onClick={() => navigate("/")}>Back</button>
+		<div className="min-h-screen bg-black text-white">
+			{/* Header */}
+			<div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+				<span className="text-green-500 font-bold text-lg">csoc</span>
+				<button
+					onClick={logout}
+					className="text-black hover:text-red-400 text-sm transition"
+				>
+					Log out
+				</button>
+			</div>
+
+			{/* Main */}
+			<div className="max-w-lg mx-auto px-6 py-12">
+				{/* Title */}
+				<div className="mb-8">
+					<h1 className="text-3xl font-bold">{profile.username}</h1>
+					<p className="text-gray-500 mt-1">Edit your profile</p>
+				</div>
+
+				<form
+					onSubmit={handleSubmit}
+					className="flex flex-col gap-5"
+				>
+					<div className="flex flex-col gap-1">
+						<label className="text-gray-400 text-sm">Bio</label>
+						<textarea
+							name="bio"
+							placeholder="Tell people about yourself..."
+							value={form.bio}
+							onChange={handleChange}
+							rows={3}
+							className="bg-gray-900 border border-gray-800 text-white placeholder-gray-600 rounded-lg px-4 py-3 outline-none focus:border-green-500 transition resize-none"
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-gray-400 text-sm">Course</label>
+						<input
+							name="course"
+							placeholder="e.g. Computer Science"
+							value={form.course}
+							onChange={handleChange}
+							className="bg-gray-900 border border-gray-800 text-white placeholder-gray-600 rounded-lg px-4 py-3 outline-none focus:border-green-500 transition"
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-gray-400 text-sm">
+							Location
+						</label>
+						<input
+							name="location"
+							placeholder="e.g. Melbourne"
+							value={form.location}
+							onChange={handleChange}
+							className="bg-gray-900 border border-gray-800 text-white placeholder-gray-600 rounded-lg px-4 py-3 outline-none focus:border-green-500 transition"
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-gray-400 text-sm">Contact</label>
+						<input
+							name="contact"
+							placeholder="e.g. Discord handle"
+							value={form.contact}
+							onChange={handleChange}
+							className="bg-gray-900 border border-gray-800 text-white placeholder-gray-600 rounded-lg px-4 py-3 outline-none focus:border-green-500 transition"
+						/>
+					</div>
+
+					<div className="flex flex-col gap-1">
+						<label className="text-gray-400 text-sm">
+							Interests
+						</label>
+						<input
+							name="interests"
+							placeholder="e.g. hiking, chess, ml"
+							value={form.interests}
+							onChange={handleChange}
+							className="bg-gray-900 border border-gray-800 text-white placeholder-gray-600 rounded-lg px-4 py-3 outline-none focus:border-green-500 transition"
+						/>
+						<p className="text-gray-600 text-xs mt-1">
+							Separate with commas. This powers your match
+							suggestions.
+						</p>
+					</div>
+
+					<button
+						type="submit"
+						className="bg-green-500 hover:bg-green-400 text-black hover:text-white font-semibold rounded-lg py-3 transition mt-2"
+					>
+						{saved ? 'Saved!' : 'Save Profile'}
+					</button>
+				</form>
+
+				<button
+					onClick={() => navigate('/')}
+					className="mt-6 text-black-500 hover:text-white text-sm transition"
+				>
+					← Back to home
+				</button>
+				<button
+					onClick={deleteAccount}
+					className="mt-4 text-black-500 hover:text-white text-sm transition"
+				>
+					DELETE ACCOUNT (CANNOT BE UNDONE)
+				</button>
+			</div>
 		</div>
-	)
+	);
 }
 
-export default Profile
+export default Profile;

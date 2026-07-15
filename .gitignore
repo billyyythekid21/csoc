@@ -46,6 +46,17 @@ env/
 .Python
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Database dumps / backups (may contain real user data)
+*.sql
+*.dump
+*.bak
+
+# Local secrets (VAPID keys, generated credentials, etc. - never commit)
+.secrets/
+backend/.secrets/
 
 # Expo / React Native
 .expo/

@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from datetime import datetime, timezone
 from database import Base
 
+
 class Subscriber(Base):
     __tablename__ = "subscribers"
 
@@ -17,6 +18,6 @@ class SendLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     subscriber_id = Column(Integer, nullable=False)
-    status = Column(String)        # "success" | "failed"
+    status = Column(String)  # "success" | "failed"
     message_preview = Column(String)
     sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
