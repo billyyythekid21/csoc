@@ -187,18 +187,21 @@ function Profile() {
 					</button>
 				</form>
 
-				<button
-					onClick={() => navigate('/')}
-					className="mt-6 text-black-500 hover:text-white text-sm transition"
-				>
-					← Back to home
-				</button>
-				<button
-					onClick={deleteAccount}
-					className="mt-4 text-black-500 hover:text-white text-sm transition"
-				>
-					DELETE ACCOUNT (CANNOT BE UNDONE)
-				</button>
+
+				<div className="flex gap-4 mt-6">
+					<button
+						onClick={() => navigate('/')}
+						className="text-black hover:text-white text-sm transition"
+					>
+						← Home
+					</button>
+					<button
+						onClick={deleteAccount}
+						className="text-black hover:text-white text-sm transition"
+					>
+						DELETE ACCOUNT
+					</button>
+				</div>
 			</div>
 		</div>
 	);
