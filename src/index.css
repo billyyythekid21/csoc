@@ -16,3 +16,7 @@
 		background-color: var(--color-green-400);
 	}
 }
+
+body {
+	font-family: 'DM Sans', sans-serif;
+}

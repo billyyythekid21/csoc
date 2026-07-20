@@ -206,7 +206,7 @@ function Search() {
 					onClick={() => navigate('/')}
 					className="mt-10 text-black-500 hover:text-white text-sm transition"
 				>
-					← Back to home
+					← Home
 				</button>
 			</div>
 		</div>

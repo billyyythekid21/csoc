@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, DateTime, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
+from pgvector.sqlalchemy import Vector
 
 from app.db.session import Base
 
@@ -25,3 +26,4 @@ class Event(Base):
     is_active = Column(Boolean, default=True)
     is_public = Column(Boolean, default=True)
     is_featured = Column(Boolean, default=False)
+    embedding = Column(Vector(384), nullable=True)

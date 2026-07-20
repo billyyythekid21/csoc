@@ -22,7 +22,7 @@ from app.auth import (
     create_access_token,
     get_current_user,
 )
-from app.ml.embeddings import embed_profile
+from app.ml.embeddings import embed_profile, embed_text
 from app.ml.ranking import get_trained_model, rank_candidates
 
 Base.metadata.create_all(bind=engine)
@@ -394,6 +394,70 @@ def get_mutual_matches(
     ]
 
 
+@app.get("/matches/liked")
+def get_liked_users(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    People the current user has liked but who haven't liked back. 
+    Already-mutual matches are excluded since those show up on /matches/mutual instead.
+    """
+    liked = (
+        db.query(MatchRecord.to_user_id)
+        .filter(
+            MatchRecord.from_user_id == str(current_user.id),
+            MatchRecord.action == "like",
+        )
+        .all()
+    )
+    liked_ids = [r[0] for r in liked]
+
+    mutual_ids = (
+        db.query(MatchRecord.from_user_id)
+        .filter(
+            MatchRecord.from_user_id.in_(liked_ids),
+            MatchRecord.to_user_id == str(current_user.id),
+            MatchRecord.action == "like",
+        )
+        .all()
+    )
+    mutual_ids = {r[0] for r in mutual_ids}
+
+    pending_ids = [i for i in liked_ids if i not in mutual_ids]
+    users = db.query(User).filter(User.id.in_(pending_ids)).all()
+
+    return [
+        {
+            "id": str(u.id),
+            "username": u.username,
+            "bio": u.bio,
+            "course": u.course,
+            "interests": u.interests,
+            "location": u.location,
+        }
+        for u in users
+    ]
+
+@app.delete("/matches/action/{user_id}")
+def unlike_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    record = db.query(MatchRecord).filter(
+        MatchRecord.from_user_id == str(current_user.id),
+        MatchRecord.to_user_id == user_id,
+        MatchRecord.action == "like",
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Like not found")
+
+    db.delete(record)
+    db.commit()
+    return {"status": "ok"}
+
 # ===== Events =====
 
 
@@ -411,6 +475,7 @@ def create_event(
         location=payload.location,
         starts_at=payload.starts_at,
         tags=payload.tags,
+        embedding=embed_text(payload.title + " " + payload.description + " " + payload.location + " " + payload.tags),
     )
     db.add(event)
     db.commit()
@@ -419,13 +484,25 @@ def create_event(
 
 
 @app.get("/events")
-def get_events(db: Session = Depends(get_db)):
-    events = (
-        db.query(Event)
-        .filter(Event.is_deleted == False)
-        .order_by(Event.starts_at.asc())
-        .all()
-    )
+def get_events(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.embedding is None:
+        events = (
+            db.query(Event)
+            .filter(Event.is_deleted == False)
+            .order_by(Event.starts_at.asc())
+            .all()
+        )
+    else:
+        events = (
+            db.query(Event)
+            .filter(Event.is_deleted == False)
+            .order_by(Event.embedding.cosine_distance(current_user.embedding))
+            .all()
+        )
+
     return [
         {
             "id": str(e.id),
