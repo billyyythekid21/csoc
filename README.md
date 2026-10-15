@@ -2,7 +2,7 @@
 
 A social app for uni students (mostly for CS/IT students, but all are welcome) to find friends, match with peers, and organise campus events.
 
-> In early development. Not open source (yet).
+> In early development. Not open source
 
 ---
 
@@ -22,9 +22,9 @@ csoc helps students match with people who share their courses or interests, maki
 - Upload a timetable (`.ics`) so you can find mutual free time to spend with others
 - Get notified (web push)
 
-
-
 ---
+
+
 
 ## How it works
 
@@ -33,9 +33,9 @@ csoc helps students match with people who share their courses or interests, maki
 3. Like or pass; mutual matches unlock contact and icebreakers.
 4. Use events and search to meet people offline.
 
-
-
 ---
+
+
 
 ## Stack
 
@@ -49,6 +49,8 @@ csoc helps students match with people who share their courses or interests, maki
 
 
 ---
+
+
 
 ## Status
 
