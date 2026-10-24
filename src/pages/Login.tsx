@@ -7,6 +7,7 @@ function Login() {
 	const navigate = useNavigate();
 	const [form, setForm] = useState({ email: '', password: '' });
 	const [error, setError] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setForm({ ...form, [e.target.name]: e.target.value });
@@ -14,41 +15,33 @@ function Login() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		setSubmitting(true);
 		try {
 			const res = await axios.post('/login', form);
 			localStorage.setItem('token', res.data.token);
 			navigate('/');
 		} catch {
-			setError('Invalid email or password');
+			setError('Wrong email or password.');
+		} finally {
+			setSubmitting(false);
 		}
 	};
 
 	return (
 		<AuthLayout
 			title="Log in"
-			subtitle="Welcome back and keep exploring."
 			error={error}
 			footer={
 				<>
-					No account?{' '}
-					<Link
-						to="/signup"
-						className="font-semibold text-[var(--csoc-accent)] underline-offset-4 hover:underline"
-					>
-						Sign up
-					</Link>
+					No account? <Link to="/signup">Sign up</Link>
 				</>
 			}
 		>
-			<form
-				onSubmit={handleSubmit}
-				className="flex flex-col gap-4"
-			>
+			<form onSubmit={handleSubmit} className="flex flex-col gap-4">
 				<Field
 					label="Email"
 					name="email"
 					type="email"
-					placeholder="yourname@email.com"
 					autoComplete="email"
 					onChange={handleChange}
 				/>
@@ -56,15 +49,15 @@ function Login() {
 					label="Password"
 					name="password"
 					type="password"
-					placeholder="••••••••"
 					autoComplete="current-password"
 					onChange={handleChange}
 				/>
 				<button
 					type="submit"
-					className="mt-2 bg-[var(--csoc-accent)] py-3.5 text-sm font-semibold text-white transition hover:bg-[var(--csoc-accent-hover)]"
+					disabled={submitting}
+					className="btn btn-primary mt-1"
 				>
-					Log in
+					{submitting ? 'Logging in…' : 'Log in'}
 				</button>
 			</form>
 		</AuthLayout>

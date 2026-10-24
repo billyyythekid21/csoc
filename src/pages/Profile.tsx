@@ -1,53 +1,90 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import {
-	ArrowLeft,
-	Trash2,
-	Code2,
-	Camera,
-	Users,
-	Mail,
-	Globe,
-	MessageCircle,
-} from 'lucide-react';
+import AppShell from '../components/AppShell';
 
-interface UserProfile {
+const emptyForm = {
+	bio: '',
+	location: '',
+	course: '',
+	contact: '',
+	interests: '',
+	github_username: '',
+	instagram: '',
+	facebook: '',
+	website: '',
+	contact_email: '',
+	discord: '',
+};
+
+type ProfileForm = typeof emptyForm;
+
+interface UserProfile extends ProfileForm {
 	username: string;
 	email: string;
-	bio: string;
-	location: string;
-	course: string;
-	contact: string;
-	interests: string;
-	github_username: string;
-	instagram: string;
-	facebook: string;
-	website: string;
-	contact_email: string;
-	discord: string;
 }
 
-const inputClass = 'csoc-input';
+interface FieldDef {
+	name: keyof ProfileForm;
+	label: string;
+	placeholder?: string;
+	type?: string;
+	hint?: string;
+	wide?: boolean;
+}
+
+const aboutFields: FieldDef[] = [
+	{
+		name: 'course',
+		label: 'Course',
+		placeholder: 'e.g. Bachelor of Computer Science',
+	},
+	{ name: 'location', label: 'Location', placeholder: 'e.g. Clayton' },
+	{
+		name: 'interests',
+		label: 'Interests',
+		placeholder: 'e.g. rock climbing, rust, machine learning',
+		hint: 'Comma separated. Used to suggest people and events.',
+		wide: true,
+	},
+];
+
+const linkFields: FieldDef[] = [
+	{
+		name: 'contact',
+		label: 'Preferred contact',
+		placeholder: 'e.g. message me on Discord',
+	},
+	{ name: 'discord', label: 'Discord' },
+	{ name: 'contact_email', label: 'Email', type: 'email' },
+	{
+		name: 'github_username',
+		label: 'GitHub username',
+		hint: 'Your public repos are factored into suggestions.',
+	},
+	{
+		name: 'instagram',
+		label: 'Instagram',
+		placeholder: 'https://instagram.com/…',
+	},
+	{
+		name: 'facebook',
+		label: 'Facebook',
+		placeholder: 'https://facebook.com/…',
+	},
+	{ name: 'website', label: 'Website', placeholder: 'https://…' },
+];
 
 function Profile() {
 	const navigate = useNavigate();
 	const [profile, setProfile] = useState<UserProfile | null>(null);
-	const [form, setForm] = useState({
-		bio: '',
-		location: '',
-		course: '',
-		contact: '',
-		interests: '',
-		github_username: '',
-		instagram: '',
-		facebook: '',
-		website: '',
-		contact_email: '',
-		discord: '',
-	});
-	const [saved, setSaved] = useState<boolean>(false);
-	const [timetableStatus, setTimetableStatus] = useState<string | null>(null);
+	const [form, setForm] = useState<ProfileForm>(emptyForm);
+	const [saving, setSaving] = useState(false);
+	const [saveStatus, setSaveStatus] = useState<'saved' | 'failed' | null>(null);
+	const [timetableStatus, setTimetableStatus] = useState<{
+		ok: boolean;
+		text: string;
+	} | null>(null);
 
 	const token = localStorage.getItem('token');
 
@@ -63,19 +100,11 @@ function Profile() {
 			})
 			.then((res) => {
 				setProfile(res.data);
-				setForm({
-					bio: res.data.bio || '',
-					location: res.data.location || '',
-					course: res.data.course || '',
-					contact: res.data.contact || '',
-					interests: res.data.interests || '',
-					github_username: res.data.github_username || '',
-					instagram: res.data.instagram || '',
-					facebook: res.data.facebook || '',
-					website: res.data.website || '',
-					contact_email: res.data.contact_email || '',
-					discord: res.data.discord || '',
-				});
+				setForm(
+					Object.fromEntries(
+						Object.keys(emptyForm).map((key) => [key, res.data[key] || '']),
+					) as ProfileForm,
+				);
 			})
 			.catch(() => {
 				localStorage.removeItem('token');
@@ -87,11 +116,7 @@ function Profile() {
 		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
 	) => {
 		setForm({ ...form, [e.target.name]: e.target.value });
-	};
-
-	const logout = () => {
-		localStorage.removeItem('token');
-		navigate('/login');
+		setSaveStatus(null);
 	};
 
 	const deleteAccount = async () => {
@@ -110,13 +135,17 @@ function Profile() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		await axios.patch('/me', form, {
-			headers: { Authorization: `Bearer ${token}` },
-		});
-		setSaved(true);
-		setTimeout(() => {
-			setSaved(false);
-		}, 2000);
+		setSaving(true);
+		try {
+			await axios.patch('/me', form, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			setSaveStatus('saved');
+		} catch {
+			setSaveStatus('failed');
+		} finally {
+			setSaving(false);
+		}
 	};
 
 	const handleTimetableUpload = async (
@@ -129,197 +158,147 @@ function Profile() {
 		formData.append('file', file);
 
 		try {
-			const res = await axios.post(
-				'/me/timetable',
-				formData,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'multipart/form-data',
-					},
+			const res = await axios.post('/me/timetable', formData, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'Content-Type': 'multipart/form-data',
 				},
-			);
-			setTimetableStatus(`${res.data.slots_saved} free slots imported.`);
+			});
+			setTimetableStatus({
+				ok: true,
+				text: `Imported ${res.data.slots_saved} free slots.`,
+			});
 		} catch {
-			setTimetableStatus('Import failed. Calendar must be a valid .ics file.');
+			setTimetableStatus({
+				ok: false,
+				text: "Couldn't read that file. It needs to be an .ics calendar export.",
+			});
 		}
 	};
 
+	const renderField = (field: FieldDef) => (
+		<div key={field.name} className={field.wide ? 'sm:col-span-2' : undefined}>
+			<label htmlFor={field.name} className="label">
+				{field.label}
+			</label>
+			<input
+				id={field.name}
+				name={field.name}
+				type={field.type ?? 'text'}
+				placeholder={field.placeholder}
+				value={form[field.name]}
+				onChange={handleChange}
+				className="input"
+			/>
+			{field.hint && <p className="hint">{field.hint}</p>}
+		</div>
+	);
+
 	if (!profile)
 		return (
-			<div className="csoc-page flex items-center justify-center text-[var(--csoc-muted)]">
-				Loading…
-			</div>
+			<AppShell>
+				<p className="muted text-sm">Loading…</p>
+			</AppShell>
 		);
 
 	return (
-		<div className="csoc-page">
-			<header className="csoc-header">
-				<button onClick={() => navigate('/')} className="csoc-brand">
-					csoc
-				</button>
-				<button
-					onClick={logout}
-					className="csoc-btn-ghost text-sm hover:text-[var(--csoc-spot)]"
-				>
-					Log out
-				</button>
-			</header>
+		<AppShell>
+			<h1 className="font-display text-4xl font-extrabold tracking-tight">
+				Profile
+			</h1>
+			<p className="muted mt-1 text-sm">
+				{profile.username} · {profile.email}
+			</p>
 
-			<div className="max-w-lg mx-auto px-6 py-12">
-				<div className="mb-8">
-					<h1 className="font-display text-4xl font-extrabold tracking-tight">
-						{profile.username}
-					</h1>
-					<p className="text-[var(--csoc-muted)] mt-1">Edit your profile</p>
-				</div>
-
-				<form onSubmit={handleSubmit} className="flex flex-col gap-5">
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Bio</label>
-						<textarea
-							name="bio"
-							placeholder="Tell people about yourself..."
-							value={form.bio}
-							onChange={handleChange}
-							rows={3}
-							className={`${inputClass} resize-none`}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Course</label>
-						<input
-							name="course"
-							placeholder="e.g. Computer Science"
-							value={form.course}
-							onChange={handleChange}
-							className={inputClass}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Location</label>
-						<input
-							name="location"
-							placeholder="e.g. Melbourne"
-							value={form.location}
-							onChange={handleChange}
-							className={inputClass}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Contact</label>
-						<input
-							name="contact"
-							placeholder="e.g. Discord handle"
-							value={form.contact}
-							onChange={handleChange}
-							className={inputClass}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Interests</label>
-						<input
-							name="interests"
-							placeholder="e.g. hiking, chess, ml"
-							value={form.interests}
-							onChange={handleChange}
-							className={inputClass}
-						/>
-						<p className="text-xs text-[var(--csoc-muted)] mt-1">
-							Separate with commas. This powers your match suggestions.
-						</p>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label className="text-sm font-medium">Timetable</label>
-						<input
-							type="file"
-							accept=".ics"
-							onChange={handleTimetableUpload}
-							className="text-sm text-[var(--csoc-muted)]"
-						/>
-						{timetableStatus && (
-							<p className="text-xs text-[var(--csoc-accent)] mt-1">
-								{timetableStatus}
-							</p>
-						)}
-						<p className="text-xs text-[var(--csoc-muted)]">
-							Upload your .ics timetable to auto-fill free blocks.
-						</p>
-					</div>
-
-					<h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--csoc-muted)] mt-2 pt-4 border-t border-[var(--csoc-line)]">
-						Links
-					</h2>
-
-					{(
-						[
-							['github_username', 'GitHub', 'e.g. yourusername', Code2],
-							[
-								'instagram',
-								'Instagram',
-								'https://instagram.com/yourusername',
-								Camera,
-							],
-							[
-								'facebook',
-								'Facebook',
-								'https://facebook.com/yourusername',
-								Users,
-							],
-							['website', 'Website', 'https://yourwebsite.com', Globe],
-							['contact_email', 'Email', 'you@example.com', Mail],
-							['discord', 'Discord', 'e.g. yourusername', MessageCircle],
-						] as const
-					).map(([name, label, placeholder, Icon]) => (
-						<div key={name} className="flex flex-col gap-1.5">
-							<label className="text-sm font-medium inline-flex items-center gap-1.5">
-								<Icon className="w-4 h-4" />
-								{label}
-							</label>
-							<input
-								name={name}
-								type={name === 'contact_email' ? 'email' : 'text'}
-								placeholder={placeholder}
-								value={form[name]}
-								onChange={handleChange}
-								className={inputClass}
-							/>
-							{name === 'github_username' && (
-								<p className="text-xs text-[var(--csoc-muted)] mt-1">
-									Links your GitHub profile to improve match suggestions.
-								</p>
-							)}
+			<div className="mt-8 grid gap-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
+				<form onSubmit={handleSubmit}>
+					<section>
+						<h2 className="font-display text-lg font-bold">About you</h2>
+						<div className="mt-4 grid gap-4 sm:grid-cols-2">
+							{aboutFields.map(renderField)}
+							<div className="sm:col-span-2">
+								<label htmlFor="bio" className="label">
+									Bio
+								</label>
+								<textarea
+									id="bio"
+									name="bio"
+									placeholder="A couple of sentences about what you're studying or looking for."
+									value={form.bio}
+									onChange={handleChange}
+									rows={4}
+									className="input resize-y"
+								/>
+							</div>
 						</div>
-					))}
+					</section>
 
-					<button type="submit" className="csoc-btn mt-2">
-						{saved ? 'Saved!' : 'Save profile'}
-					</button>
+					<section className="mt-8 border-t border-[var(--border)] pt-6">
+						<h2 className="font-display text-lg font-bold">
+							Contact and links
+						</h2>
+						<p className="muted mt-1 text-sm">
+							Only people you've matched with see these. Your GitHub username
+							also shows on your card in Discover.
+						</p>
+						<div className="mt-4 grid gap-4 sm:grid-cols-2">
+							{linkFields.map(renderField)}
+						</div>
+					</section>
+
+					<div className="mt-6 flex items-center gap-3">
+						<button type="submit" disabled={saving} className="btn btn-primary">
+							{saving ? 'Saving…' : 'Save changes'}
+						</button>
+						{saveStatus === 'saved' && (
+							<span className="muted text-sm">Saved</span>
+						)}
+						{saveStatus === 'failed' && (
+							<span className="text-sm text-[var(--danger)]">
+								Couldn't save. Try again.
+							</span>
+						)}
+					</div>
 				</form>
 
-				<div className="flex gap-6 mt-8">
-					<button
-						onClick={() => navigate('/')}
-						className="csoc-btn-ghost text-sm inline-flex items-center gap-1 text-[var(--csoc-accent)]"
-					>
-						<ArrowLeft className="w-4 h-4" />
-						Home
-					</button>
-					<button
-						onClick={deleteAccount}
-						className="csoc-btn-ghost text-sm inline-flex items-center gap-1 hover:text-[var(--csoc-spot)]"
-					>
-						<Trash2 className="w-4 h-4" />
-						Delete account
-					</button>
-				</div>
+				<aside className="flex flex-col gap-10">
+					<section className="border-t border-[var(--border)] pt-6 lg:border-t-0 lg:pt-0">
+						<h2 className="font-display text-lg font-bold">Timetable</h2>
+						<p className="muted mt-1 text-sm">
+							Import your timetable as an .ics file to record when you're free.
+						</p>
+						<input
+							type="file"
+							accept=".ics,text/calendar"
+							onChange={handleTimetableUpload}
+							className="mt-3 block text-sm file:mr-3 file:cursor-pointer file:border file:border-[var(--border)] file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-semibold hover:file:border-[var(--text)]"
+						/>
+						{timetableStatus && (
+							<p
+								className={`mt-2 text-sm ${
+									timetableStatus.ok ? 'muted' : 'text-[var(--danger)]'
+								}`}
+							>
+								{timetableStatus.text}
+							</p>
+						)}
+					</section>
+
+					<section className="border-t border-[var(--border)] pt-6">
+						<h2 className="font-display text-lg font-bold">Delete account</h2>
+						<p className="muted mt-1 text-sm">
+							Permanently removes your profile, likes and RSVPs.
+						</p>
+						<button
+							onClick={deleteAccount}
+							className="btn btn-secondary mt-3 text-[var(--danger)]"
+						>
+							Delete account
+						</button>
+					</section>
+				</aside>
 			</div>
-		</div>
+		</AppShell>
 	);
 }
 

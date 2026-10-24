@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Search as SearchIcon, ArrowLeft } from 'lucide-react';
+import AppShell from '../components/AppShell';
+import { formatEventTime } from '../lib/format';
 
 interface UserResult {
 	id: string;
@@ -24,7 +25,7 @@ function Search() {
 	const [query, setQuery] = useState('');
 	const [users, setUsers] = useState<UserResult[]>([]);
 	const [events, setEvents] = useState<EventResult[]>([]);
-	const [searched, setSearched] = useState(false);
+	const [lastQuery, setLastQuery] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 
 	const token = localStorage.getItem('token');
@@ -37,16 +38,16 @@ function Search() {
 
 	const handleSearch = async (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!query.trim()) return;
+		const q = query.trim();
+		if (!q) return;
 		setLoading(true);
 		try {
-			const res = await axios.get(
-				`/search?q=${encodeURIComponent(query)}`,
-				{ headers: { Authorization: `Bearer ${token}` } },
-			);
+			const res = await axios.get(`/search?q=${encodeURIComponent(q)}`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
 			setUsers(res.data.users);
 			setEvents(res.data.events);
-			setSearched(true);
+			setLastQuery(q);
 		} catch (err) {
 			if (axios.isAxiosError(err) && err.response?.status === 401) {
 				localStorage.removeItem('token');
@@ -58,131 +59,84 @@ function Search() {
 	};
 
 	return (
-		<div className="csoc-page">
-			<header className="csoc-header">
-				<button onClick={() => navigate('/')} className="csoc-brand">
-					csoc
-				</button>
-			</header>
+		<AppShell>
+			<h1 className="font-display text-4xl font-extrabold tracking-tight">
+				Search
+			</h1>
 
-			<div className="max-w-lg mx-auto px-6 py-10">
-				<h1 className="font-display text-4xl font-extrabold tracking-tight mb-8">
-					Search
-				</h1>
-
-				<form onSubmit={handleSearch} className="flex gap-2 mb-10">
-					<input
-						placeholder="Search people, courses, events..."
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						className="csoc-input flex-1"
-					/>
-					<button
-						type="submit"
-						className="csoc-btn inline-flex items-center gap-2 shrink-0"
-					>
-						{loading ? (
-							'…'
-						) : (
-							<>
-								<SearchIcon className="w-4 h-4" />
-								Search
-							</>
-						)}
-					</button>
-				</form>
-
-				{searched && (
-					<>
-						<section className="mb-10">
-							<h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--csoc-muted)] mb-4">
-								People
-							</h2>
-							{users.length === 0 ? (
-								<p className="text-sm text-[var(--csoc-muted)]">No people found</p>
-							) : (
-								<div className="divide-y divide-[var(--csoc-line)] border-y border-[var(--csoc-line)]">
-									{users.map((u) => (
-										<article key={u.id} className="py-4">
-											<p className="font-semibold mb-2">{u.username}</p>
-											<div className="flex flex-col gap-1 text-sm">
-												{u.course && (
-													<div className="flex gap-3">
-														<span className="text-[var(--csoc-muted)] w-16">
-															Studies
-														</span>
-														<span>{u.course}</span>
-													</div>
-												)}
-												{u.interests && (
-													<div className="flex gap-3">
-														<span className="text-[var(--csoc-muted)] w-16">
-															Into
-														</span>
-														<span>{u.interests}</span>
-													</div>
-												)}
-												{u.location && (
-													<div className="flex gap-3">
-														<span className="text-[var(--csoc-muted)] w-16">
-															Based in
-														</span>
-														<span>{u.location}</span>
-													</div>
-												)}
-											</div>
-										</article>
-									))}
-								</div>
-							)}
-						</section>
-
-						<section>
-							<h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--csoc-muted)] mb-4">
-								Events
-							</h2>
-							{events.length === 0 ? (
-								<p className="text-sm text-[var(--csoc-muted)]">No events found</p>
-							) : (
-								<div className="divide-y divide-[var(--csoc-line)] border-y border-[var(--csoc-line)]">
-									{events.map((e) => (
-										<article key={e.id} className="py-4">
-											<p className="font-semibold mb-2">{e.title}</p>
-											<div className="flex flex-col gap-1 text-sm">
-												<div className="flex gap-3">
-													<span className="text-[var(--csoc-muted)] w-14">When</span>
-													<span>{new Date(e.starts_at).toLocaleString()}</span>
-												</div>
-												{e.location && (
-													<div className="flex gap-3">
-														<span className="text-[var(--csoc-muted)] w-14">
-															Where
-														</span>
-														<span>{e.location}</span>
-													</div>
-												)}
-												<div className="flex gap-3">
-													<span className="text-[var(--csoc-muted)] w-14">By</span>
-													<span>{e.organizer}</span>
-												</div>
-											</div>
-										</article>
-									))}
-								</div>
-							)}
-						</section>
-					</>
-				)}
-
+			<form onSubmit={handleSearch} className="mt-6 flex max-w-2xl gap-2">
+				<input
+					type="search"
+					placeholder="Name, course, interest or event"
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					autoFocus
+					className="input"
+				/>
 				<button
-					onClick={() => navigate('/')}
-					className="mt-10 csoc-btn-ghost inline-flex items-center gap-1 text-[var(--csoc-accent)]"
+					type="submit"
+					disabled={loading}
+					className="btn btn-secondary shrink-0"
 				>
-					<ArrowLeft className="w-4 h-4" />
-					Home
+					{loading ? 'Searching…' : 'Search'}
 				</button>
-			</div>
-		</div>
+			</form>
+
+			{lastQuery !== null && (
+				<div className="mt-8 grid gap-8 md:grid-cols-2">
+					<section>
+						<h2 className="font-display text-lg font-bold">
+							People <span className="muted font-normal">({users.length})</span>
+						</h2>
+						{users.length === 0 ? (
+							<p className="muted mt-2 text-sm">
+								No one matches “{lastQuery}”.
+							</p>
+						) : (
+							<ul className="mt-2 divide-y divide-[var(--border)]">
+								{users.map((u) => (
+									<li key={u.id} className="py-3 text-sm">
+										<p className="font-medium">{u.username}</p>
+										{(u.course || u.location) && (
+											<p className="muted">
+												{[u.course, u.location].filter(Boolean).join(' · ')}
+											</p>
+										)}
+										{u.interests && <p className="muted">{u.interests}</p>}
+									</li>
+								))}
+							</ul>
+						)}
+					</section>
+
+					<section>
+						<h2 className="font-display text-lg font-bold">
+							Events{' '}
+							<span className="muted font-normal">({events.length})</span>
+						</h2>
+						{events.length === 0 ? (
+							<p className="muted mt-2 text-sm">
+								No events match “{lastQuery}”.
+							</p>
+						) : (
+							<ul className="mt-2 divide-y divide-[var(--border)]">
+								{events.map((e) => (
+									<li key={e.id} className="py-3 text-sm">
+										<p className="font-medium">{e.title}</p>
+										<p className="muted">
+											{[formatEventTime(e.starts_at), e.location]
+												.filter(Boolean)
+												.join(' · ')}
+										</p>
+										<p className="muted">Posted by {e.organizer}</p>
+									</li>
+								))}
+							</ul>
+						)}
+					</section>
+				</div>
+			)}
+		</AppShell>
 	);
 }
 

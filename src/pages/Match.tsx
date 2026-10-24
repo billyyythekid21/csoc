@@ -1,250 +1,258 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Heart, X, ArrowLeft, Code2 } from 'lucide-react';
+import { Heart, X } from 'lucide-react';
+import AppShell from '../components/AppShell';
+import { splitTags } from '../lib/format';
 
-interface MatchUser {
+interface Candidate {
 	id: string;
 	username: string;
-	bio: string;
-	course: string;
-	interests: string;
-	location: string;
-	contact: string;
-	github_username: string;
+	bio: string | null;
+	course: string | null;
+	interests: string | null;
+	location: string | null;
+	github_username: string | null;
 }
 
 function Match() {
 	const navigate = useNavigate();
-	const [matches, setMatches] = useState<MatchUser[]>([]);
+	const [candidates, setCandidates] = useState<Candidate[]>([]);
 	const [index, setIndex] = useState(0);
 	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<'profile' | 'other' | null>(null);
 	const [courseFilter, setCourseFilter] = useState('');
 	const [appliedFilter, setAppliedFilter] = useState('');
+	const [acting, setActing] = useState(false);
+	const [actionFailed, setActionFailed] = useState(false);
+	const [newMatch, setNewMatch] = useState<string | null>(null);
 
 	const token = localStorage.getItem('token');
+
+	const load = (course: string) => {
+		setLoading(true);
+		setIndex(0);
+		const url = course
+			? `/matches?course=${encodeURIComponent(course)}`
+			: '/matches';
+		axios
+			.get(url, { headers: { Authorization: `Bearer ${token}` } })
+			.then((res) => {
+				setCandidates(res.data);
+				setError(null);
+			})
+			.catch((err) => {
+				if (err.response?.status === 401) {
+					localStorage.removeItem('token');
+					navigate('/login');
+					return;
+				}
+				setError(err.response?.status === 400 ? 'profile' : 'other');
+			})
+			.finally(() => setLoading(false));
+	};
 
 	useEffect(() => {
 		if (!token) {
 			navigate('/login');
 			return;
 		}
-
-		axios
-			.get('/matches', {
-				headers: { Authorization: `Bearer ${token}` },
-			})
-			.then((res) => {
-				setMatches(res.data);
-				setLoading(false);
-			})
-			.catch((err) => {
-				if (err.response?.status === 400) {
-					setError('Complete your profile first');
-				} else {
-					setError('Something went wrong');
-				}
-				setLoading(false);
-			});
+		load('');
 	}, []);
 
-	const applyFilter = () => {
-		setAppliedFilter(courseFilter);
-		setIndex(0);
-		setLoading(true);
-		const url = courseFilter
-			? `/matches?course=${encodeURIComponent(courseFilter)}`
-			: '/matches';
-		axios
-			.get(url, {
-				headers: { Authorization: `Bearer ${token}` },
-			})
-			.then((res) => {
-				setMatches(res.data);
-				setLoading(false);
-			})
-			.catch(() => setLoading(false));
+	const current = candidates[index];
+
+	const handleAction = useCallback(
+		async (action: 'like' | 'pass') => {
+			if (!current || acting) return;
+			setActing(true);
+			setActionFailed(false);
+			try {
+				const res = await axios.post(
+					'/matches/action',
+					{ to_user_id: current.id, action },
+					{ headers: { Authorization: `Bearer ${token}` } },
+				);
+				if (res.data.is_mutual) setNewMatch(current.username);
+				setIndex((i) => i + 1);
+			} catch {
+				setActionFailed(true);
+			} finally {
+				setActing(false);
+			}
+		},
+		[current, acting, token],
+	);
+
+	useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.target instanceof HTMLInputElement) return;
+			if (e.key === 'ArrowLeft') handleAction('pass');
+			if (e.key === 'ArrowRight') handleAction('like');
+		};
+		window.addEventListener('keydown', onKeyDown);
+		return () => window.removeEventListener('keydown', onKeyDown);
+	}, [handleAction]);
+
+	const applyFilter = (e: React.FormEvent) => {
+		e.preventDefault();
+		const course = courseFilter.trim();
+		setAppliedFilter(course);
+		load(course);
 	};
 
 	const clearFilter = () => {
 		setCourseFilter('');
 		setAppliedFilter('');
-		setIndex(0);
-		setLoading(true);
-		axios
-			.get('/matches', {
-				headers: { Authorization: `Bearer ${token}` },
-			})
-			.then((res) => {
-				setMatches(res.data);
-				setLoading(false);
-			})
-			.catch(() => setLoading(false));
+		load('');
 	};
 
-	const handleAction = async (action: 'like' | 'pass') => {
-		const user = matches[index];
-		const res = await axios.post(
-			'/matches/action',
-			{
-				to_user_id: user.id,
-				action,
-			},
-			{
-				headers: { Authorization: `Bearer ${token}` },
-			},
+	const tags = current ? splitTags(current.interests) : [];
+
+	let body: ReactNode;
+	if (loading) {
+		body = <p className="muted text-sm">Loading…</p>;
+	} else if (error === 'profile') {
+		body = (
+			<p className="text-sm">
+				Add a course, interests or bio to{' '}
+				<Link to="/profile">your profile</Link> first. Suggestions are based on
+				them.
+			</p>
 		);
-
-		if (res.data.is_mutual) {
-			alert(
-				`You and ${user.username} both liked each other! You can now see each other's social links.`,
-			);
-		}
-
-		setIndex((i) => i + 1);
-	};
-
-	if (loading)
-		return (
-			<div className="csoc-page flex items-center justify-center text-[var(--csoc-muted)]">
-				Loading…
+	} else if (error) {
+		body = (
+			<p className="text-sm">
+				Couldn't load suggestions. Refresh to try again.
+			</p>
+		);
+	} else if (!current) {
+		body = (
+			<div className="text-sm">
+				<p>
+					No one left to show
+					{appliedFilter && <> for “{appliedFilter}”</>}.
+				</p>
+				{appliedFilter ? (
+					<button onClick={clearFilter} className="btn-text mt-1 underline">
+						Clear the filter
+					</button>
+				) : (
+					<p className="muted mt-1">Check back once more people have joined.</p>
+				)}
 			</div>
 		);
-
-	if (error)
-		return (
-			<div className="csoc-page flex items-center justify-center">
-				<div className="text-center px-6">
-					<p className="text-[var(--csoc-muted)] mb-4">{error}</p>
-					<button
-						onClick={() => navigate('/profile')}
-						className="csoc-btn-ghost text-[var(--csoc-accent)]"
-					>
-						Go to Profile
-					</button>
-				</div>
-			</div>
-		);
-
-	if (matches.length === 0 || index >= matches.length)
-		return (
-			<div className="csoc-page">
-				<header className="csoc-header">
-					<button onClick={() => navigate('/')} className="csoc-brand">
-						csoc
-					</button>
-				</header>
-				<div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-6">
-					<h2 className="font-display text-3xl font-extrabold tracking-tight mb-3">
-						You're all caught up
+	} else {
+		body = (
+			<>
+				<article className="card p-6 md:p-8">
+					<h2 className="font-display text-3xl font-extrabold tracking-tight">
+						{current.username}
 					</h2>
-					<p className="text-[var(--csoc-muted)] mb-8 max-w-sm">
-						No more people to meet right now. Check back later.
-					</p>
-					<button
-						onClick={() => navigate('/')}
-						className="csoc-btn-ghost inline-flex items-center gap-1 text-[var(--csoc-accent)]"
-					>
-						<ArrowLeft className="w-4 h-4" />
-						Back to home
-					</button>
-				</div>
-			</div>
-		);
-
-	const user = matches[index];
-
-	return (
-		<div className="csoc-page">
-			<header className="csoc-header">
-				<button onClick={() => navigate('/')} className="csoc-brand">
-					csoc
-				</button>
-				<span className="text-sm text-[var(--csoc-muted)]">
-					{index + 1} of {matches.length}
-				</span>
-			</header>
-
-			<div className="max-w-lg mx-auto px-6 py-10">
-				<div className="flex gap-2 mb-8">
-					<input
-						placeholder="Filter by course..."
-						value={courseFilter}
-						onChange={(e) => setCourseFilter(e.target.value)}
-						className="csoc-input flex-1"
-					/>
-					<button onClick={applyFilter} className="csoc-btn-ink text-sm shrink-0">
-						Apply
-					</button>
-					{appliedFilter && (
-						<button onClick={clearFilter} className="csoc-btn-ghost text-sm shrink-0">
-							Clear
-						</button>
+					{(current.course || current.location) && (
+						<p className="muted text-sm">
+							{[current.course, current.location].filter(Boolean).join(' · ')}
+						</p>
 					)}
-				</div>
-
-				<article className="csoc-panel csoc-rise mb-6">
-					<h2 className="font-display text-3xl font-extrabold tracking-tight mb-5">
-						{user.username}
-					</h2>
-
-					<div className="flex flex-col gap-2.5">
-						{user.course && (
-							<div className="flex gap-3 text-sm">
-								<span className="text-[var(--csoc-muted)] w-16 shrink-0">Studies</span>
-								<span>{user.course}</span>
-							</div>
-						)}
-						{user.location && (
-							<div className="flex gap-3 text-sm">
-								<span className="text-[var(--csoc-muted)] w-16 shrink-0">Based in</span>
-								<span>{user.location}</span>
-							</div>
-						)}
-						{user.interests && (
-							<div className="flex gap-3 text-sm">
-								<span className="text-[var(--csoc-muted)] w-16 shrink-0">Into</span>
-								<span>{user.interests}</span>
-							</div>
-						)}
-						{user.bio && (
-							<p className="text-[var(--csoc-muted)] text-sm mt-3 leading-relaxed">
-								{user.bio}
-							</p>
-						)}
-						{user.github_username && (
+					{current.bio && <p className="mt-4 leading-relaxed">{current.bio}</p>}
+					{tags.length > 0 && (
+						<div className="mt-4 flex flex-wrap gap-1.5">
+							{tags.map((tag) => (
+								<span key={tag} className="chip">
+									{tag}
+								</span>
+							))}
+						</div>
+					)}
+					{current.github_username && (
+						<p className="mt-4 text-sm">
 							<a
-								href={`https://github.com/${user.github_username}`}
+								href={`https://github.com/${current.github_username}`}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="flex items-center gap-2 text-sm mt-4 pt-4 border-t border-[var(--csoc-line)] text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition w-fit"
 							>
-								<Code2 className="w-4 h-4" />
-								{user.github_username}
+								github.com/{current.github_username}
 							</a>
-						)}
-					</div>
+						</p>
+					)}
 				</article>
 
-				<div className="flex gap-3">
+				<div className="mt-4 flex gap-3">
 					<button
 						onClick={() => handleAction('pass')}
-						className="flex-1 border border-[var(--csoc-line)] bg-white py-4 font-semibold transition hover:border-[var(--csoc-ink)] inline-flex items-center justify-center gap-2"
+						disabled={acting}
+						className="btn btn-secondary flex-1 py-2.5"
 					>
-						<X className="w-5 h-5" />
+						<X className="h-4 w-4" />
 						Pass
 					</button>
 					<button
 						onClick={() => handleAction('like')}
-						className="csoc-btn flex-1 py-4 inline-flex items-center justify-center gap-2"
+						disabled={acting}
+						className="btn btn-primary flex-1 py-2.5"
 					>
-						<Heart className="w-5 h-5" />
+						<Heart className="h-4 w-4" />
 						Like
 					</button>
 				</div>
+				{actionFailed ? (
+					<p className="mt-3 text-xs text-[var(--danger)]">
+						That didn't save. Try again.
+					</p>
+				) : (
+					<p className="muted mt-3 hidden text-xs sm:block">
+						You can also use the ← and → keys.
+					</p>
+				)}
+			</>
+		);
+	}
+
+	return (
+		<AppShell>
+			<div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+				<div className="flex items-baseline gap-4">
+					<h1 className="font-display text-4xl font-extrabold tracking-tight">
+						Discover
+					</h1>
+					{current && !loading && (
+						<span className="muted text-sm">
+							{index + 1} of {candidates.length}
+						</span>
+					)}
+				</div>
+
+				<form onSubmit={applyFilter} className="flex gap-2 md:w-[26rem]">
+					<input
+						placeholder="Filter by course"
+						value={courseFilter}
+						onChange={(e) => setCourseFilter(e.target.value)}
+						className="input"
+					/>
+					<button type="submit" className="btn btn-ink shrink-0">
+						Filter
+					</button>
+					{appliedFilter && (
+						<button
+							type="button"
+							onClick={clearFilter}
+							className="btn-text shrink-0 px-1"
+						>
+							Clear
+						</button>
+					)}
+				</form>
 			</div>
-		</div>
+
+			{newMatch && (
+				<p className="mx-auto mt-6 max-w-2xl border border-[var(--accent)]/30 bg-white px-4 py-3 text-sm">
+					You and {newMatch} liked each other. Their contact details are on your{' '}
+					<Link to="/matches">Matches</Link> page.
+				</p>
+			)}
+
+			<div className="mx-auto mt-8 max-w-2xl">{body}</div>
+		</AppShell>
 	);
 }
 

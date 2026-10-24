@@ -1,55 +1,91 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import {
-	Sparkles,
-	HeartOff,
-	ArrowLeft,
-	Code2,
-	Camera,
-	Users,
-	Mail,
-	Globe,
-	MessageCircle,
-} from 'lucide-react';
+import AppShell from '../components/AppShell';
+import { displayUrl, isWebUrl, splitTags } from '../lib/format';
 
 interface MutualMatch {
 	id: string;
 	username: string;
-	bio: string;
-	course: string;
-	interests: string;
-	location: string;
-	contact: string;
-	github_username: string;
-	instagram: string;
-	facebook: string;
-	website: string;
-	contact_email: string;
-	discord: string;
+	bio: string | null;
+	course: string | null;
+	interests: string | null;
+	location: string | null;
+	contact: string | null;
+	github_username: string | null;
+	instagram: string | null;
+	facebook: string | null;
+	website: string | null;
+	contact_email: string | null;
+	discord: string | null;
 }
 
 interface LikedUser {
 	id: string;
 	username: string;
-	bio: string;
-	course: string;
-	interests: string;
-	location: string;
+	bio: string | null;
+	course: string | null;
+	interests: string | null;
+	location: string | null;
+}
+
+interface ContactRow {
+	label: string;
+	value: string;
+	href?: string;
+}
+
+function linkRow(label: string, value: string | null): ContactRow[] {
+	if (!value) return [];
+	return isWebUrl(value)
+		? [{ label, value: displayUrl(value), href: value }]
+		: [{ label, value }];
+}
+
+function contactRows(match: MutualMatch): ContactRow[] {
+	return [
+		...(match.contact ? [{ label: 'Contact', value: match.contact }] : []),
+		...(match.discord ? [{ label: 'Discord', value: match.discord }] : []),
+		...(match.contact_email
+			? [
+					{
+						label: 'Email',
+						value: match.contact_email,
+						href: `mailto:${match.contact_email}`,
+					},
+				]
+			: []),
+		...(match.github_username
+			? [
+					{
+						label: 'GitHub',
+						value: match.github_username,
+						href: `https://github.com/${match.github_username}`,
+					},
+				]
+			: []),
+		...linkRow('Instagram', match.instagram),
+		...linkRow('Facebook', match.facebook),
+		...linkRow('Website', match.website),
+	];
+}
+
+function subtitle(person: { course: string | null; location: string | null }) {
+	return [person.course, person.location].filter(Boolean).join(' · ');
 }
 
 function Matches() {
 	const navigate = useNavigate();
-	const [tab, setTab] = useState<'matches' | 'liked'>('matches');
+	const [tab, setTab] = useState<'mutual' | 'liked'>('mutual');
 	const [matches, setMatches] = useState<MutualMatch[]>([]);
 	const [liked, setLiked] = useState<LikedUser[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [icebreakers, setIcebreakers] = useState<{ [key: string]: string }>(
+	const [openers, setOpeners] = useState<Record<string, string>>({});
+	const [openerLoading, setOpenerLoading] = useState<Record<string, boolean>>(
 		{},
 	);
-	const [loadingIcebreaker, setLoadingIcebreaker] = useState<{
-		[key: string]: boolean;
-	}>({});
+	const [openerFailed, setOpenerFailed] = useState<Record<string, boolean>>({});
+	const [copied, setCopied] = useState<string | null>(null);
 
 	const token = localStorage.getItem('token');
 
@@ -77,277 +113,203 @@ function Matches() {
 			});
 	}, []);
 
-	const getIcebreaker = async (userId: string) => {
-		setLoadingIcebreaker((prev) => ({ ...prev, [userId]: true }));
+	const getOpener = async (userId: string) => {
+		setOpenerLoading((prev) => ({ ...prev, [userId]: true }));
+		setOpenerFailed((prev) => ({ ...prev, [userId]: false }));
 		try {
-			const res = await axios.get(
-				`/matches/mutual/${userId}/icebreaker`,
-				{ headers: { Authorization: `Bearer ${token}` } },
-			);
-			setIcebreakers((prev) => ({ ...prev, [userId]: res.data.icebreaker }));
+			const res = await axios.get(`/matches/mutual/${userId}/icebreaker`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			setOpeners((prev) => ({ ...prev, [userId]: res.data.icebreaker.trim() }));
+		} catch {
+			setOpenerFailed((prev) => ({ ...prev, [userId]: true }));
 		} finally {
-			setLoadingIcebreaker((prev) => ({ ...prev, [userId]: false }));
+			setOpenerLoading((prev) => ({ ...prev, [userId]: false }));
 		}
 	};
 
-	const handleUnlike = async (userId: string) => {
-		await axios.delete(`/matches/action/${userId}`, {
-			headers: { Authorization: `Bearer ${token}` },
-		});
-		setMatches((prev) => prev.filter((match) => match.id !== userId));
+	const copyOpener = async (userId: string) => {
+		await navigator.clipboard.writeText(openers[userId]);
+		setCopied(userId);
+		setTimeout(() => setCopied(null), 1500);
 	};
 
-	if (loading)
-		return (
-			<div className="csoc-page flex items-center justify-center text-[var(--csoc-muted)]">
-				Loading…
-			</div>
-		);
-
-	const list = tab === 'matches' ? matches : liked;
+	const handleUnlike = async (match: MutualMatch) => {
+		if (
+			!confirm(
+				`Unlike ${match.username}? You'll stop seeing each other's contact details.`,
+			)
+		)
+			return;
+		await axios.delete(`/matches/action/${match.id}`, {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+		setMatches((prev) => prev.filter((m) => m.id !== match.id));
+	};
 
 	return (
-		<div className="csoc-page">
-			<header className="csoc-header">
-				<button onClick={() => navigate('/')} className="csoc-brand">
-					csoc
-				</button>
-				<span className="text-sm text-[var(--csoc-muted)]">
-					{tab === 'matches'
-						? `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}`
-						: `${liked.length} liked`}
-				</span>
-			</header>
+		<AppShell>
+			<h1 className="font-display text-4xl font-extrabold tracking-tight">
+				Matches
+			</h1>
 
-			<div className="max-w-lg mx-auto px-6 py-10">
-				<h1 className="font-display text-4xl font-extrabold tracking-tight mb-6">
-					Your matches
-				</h1>
+			<div className="mt-4 flex gap-5 border-b border-[var(--border)] text-sm">
+				{(
+					[
+						['mutual', `Mutual (${matches.length})`],
+						['liked', `Liked (${liked.length})`],
+					] as const
+				).map(([key, label]) => (
+					<button
+						key={key}
+						onClick={() => setTab(key)}
+						className={`-mb-px border-b-2 pb-2 ${
+							tab === key
+								? 'border-[var(--text)] font-medium'
+								: 'muted border-transparent hover:text-[var(--text)]'
+						}`}
+					>
+						{label}
+					</button>
+				))}
+			</div>
 
-				<div className="flex gap-6 mb-8 border-b border-[var(--csoc-line)]">
-					{(
-						[
-							['matches', `Matches (${matches.length})`],
-							['liked', `Liked (${liked.length})`],
-						] as const
-					).map(([key, label]) => (
-						<button
-							key={key}
-							onClick={() => setTab(key)}
-							className={`csoc-btn-ghost pb-3 text-sm border-b-2 -mb-px rounded-none ${
-								tab === key
-									? 'border-[var(--csoc-ink)] text-[var(--csoc-ink)] font-semibold'
-									: 'border-transparent'
-							}`}
-						>
-							{label}
-						</button>
-					))}
-				</div>
+			{loading && <p className="muted mt-6 text-sm">Loading…</p>}
 
-				{list.length === 0 && (
-					<div className="py-20 text-center">
-						<p className="text-[var(--csoc-muted)] mb-4">
-							{tab === 'matches'
-								? 'No mutual matches yet.'
-								: "You haven't liked anyone yet."}
-						</p>
-						<button
-							onClick={() => navigate('/match')}
-							className="csoc-btn-ghost text-[var(--csoc-accent)]"
-						>
-							Find people →
-						</button>
-					</div>
-				)}
+			{!loading && tab === 'mutual' && matches.length === 0 && (
+				<p className="muted mt-6 text-sm">
+					No mutual matches yet. When someone you liked likes you back, they
+					show up here. <Link to="/match">Browse people</Link>
+				</p>
+			)}
 
-				{tab === 'liked' && liked.length > 0 && (
-					<div className="divide-y divide-[var(--csoc-line)] border-y border-[var(--csoc-line)]">
-						{liked.map((user) => (
-							<article key={user.id} className="py-6">
-								<h2 className="font-display text-xl font-bold tracking-tight mb-3">
-									{user.username}
-								</h2>
-								<div className="flex flex-col gap-2 text-sm">
-									{user.course && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Studies</span>
-											<span>{user.course}</span>
-										</div>
-									)}
-									{user.location && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Based in</span>
-											<span>{user.location}</span>
-										</div>
-									)}
-									{user.interests && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Into</span>
-											<span>{user.interests}</span>
-										</div>
-									)}
-									{user.bio && (
-										<p className="text-[var(--csoc-muted)] mt-1 leading-relaxed">
-											{user.bio}
-										</p>
-									)}
-								</div>
-								<p className="text-xs text-[var(--csoc-muted)] mt-4">
-									Waiting for them to like you back
-								</p>
-							</article>
-						))}
-					</div>
-				)}
+			{!loading && tab === 'liked' && liked.length === 0 && (
+				<p className="muted mt-6 text-sm">
+					You haven't liked anyone yet. <Link to="/match">Browse people</Link>
+				</p>
+			)}
 
-				{tab === 'matches' && matches.length > 0 && (
-					<div className="divide-y divide-[var(--csoc-line)] border-y border-[var(--csoc-line)]">
-						{matches.map((match) => (
-							<article key={match.id} className="py-6">
-								<h2 className="font-display text-xl font-bold tracking-tight mb-3">
-									{match.username}
-								</h2>
-
-								<div className="flex flex-col gap-2 text-sm mb-4">
-									{match.course && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Studies</span>
-											<span>{match.course}</span>
-										</div>
-									)}
-									{match.location && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Based in</span>
-											<span>{match.location}</span>
-										</div>
-									)}
-									{match.interests && (
-										<div className="flex gap-3">
-											<span className="text-[var(--csoc-muted)] w-16">Into</span>
-											<span>{match.interests}</span>
-										</div>
-									)}
-									{match.bio && (
-										<p className="text-[var(--csoc-muted)] mt-1 leading-relaxed">
-											{match.bio}
-										</p>
-									)}
-									{match.contact && (
-										<div className="flex gap-3 pt-3 mt-1 border-t border-[var(--csoc-line)]">
-											<span className="text-[var(--csoc-muted)] w-16">Contact</span>
-											<span className="text-[var(--csoc-accent)]">{match.contact}</span>
-										</div>
-									)}
-									{match.discord && (
-										<div className="flex gap-2 items-center">
-											<MessageCircle className="w-4 h-4 text-[var(--csoc-muted)]" />
-											<span>{match.discord}</span>
-										</div>
-									)}
-									{(match.github_username ||
-										match.instagram ||
-										match.facebook ||
-										match.website ||
-										match.contact_email) && (
-										<div className="flex gap-3 pt-3 mt-1 border-t border-[var(--csoc-line)]">
-											{match.github_username && (
-												<a
-													href={`https://github.com/${match.github_username}`}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition"
-												>
-													<Code2 className="w-5 h-5" />
-												</a>
-											)}
-											{match.instagram && (
-												<a
-													href={match.instagram}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition"
-												>
-													<Camera className="w-5 h-5" />
-												</a>
-											)}
-											{match.facebook && (
-												<a
-													href={match.facebook}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition"
-												>
-													<Users className="w-5 h-5" />
-												</a>
-											)}
-											{match.website && (
-												<a
-													href={match.website}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition"
-												>
-													<Globe className="w-5 h-5" />
-												</a>
-											)}
-											{match.contact_email && (
-												<a
-													href={`mailto:${match.contact_email}`}
-													className="text-[var(--csoc-muted)] hover:text-[var(--csoc-accent)] transition"
-												>
-													<Mail className="w-5 h-5" />
-												</a>
-											)}
-										</div>
-									)}
-								</div>
-
-								{icebreakers[match.id] ? (
-									<div className="bg-[var(--csoc-paper)] border border-[var(--csoc-line)] px-4 py-3 mt-2">
-										<p className="text-[var(--csoc-muted)] text-xs mb-1">
-											Suggested opener
-										</p>
-										<p className="text-sm italic">"{icebreakers[match.id]}"</p>
-									</div>
-								) : (
+			{!loading && tab === 'mutual' && matches.length > 0 && (
+				<ul className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+					{matches.map((match) => {
+						const rows = contactRows(match);
+						const tags = splitTags(match.interests);
+						return (
+							<li key={match.id} className="card flex flex-col p-6">
+								<div className="flex items-baseline justify-between gap-4">
+									<h2 className="font-display text-xl font-bold tracking-tight">
+										{match.username}
+									</h2>
 									<button
-										onClick={() => getIcebreaker(match.id)}
-										disabled={loadingIcebreaker[match.id]}
-										className="w-full mt-2 border border-[var(--csoc-line)] bg-white text-sm py-2.5 transition hover:border-[var(--csoc-accent)] inline-flex items-center justify-center gap-2"
+										onClick={() => handleUnlike(match)}
+										className="btn-text text-xs hover:text-[var(--danger)]"
 									>
-										{loadingIcebreaker[match.id] ? (
-											'Generating…'
-										) : (
-											<>
-												<Sparkles className="w-4 h-4" />
-												Get icebreaker
-											</>
-										)}
+										Unlike
 									</button>
+								</div>
+								{subtitle(match) && (
+									<p className="muted text-sm">{subtitle(match)}</p>
+								)}
+								{match.bio && (
+									<p className="mt-2 text-sm leading-relaxed">{match.bio}</p>
+								)}
+								{tags.length > 0 && (
+									<div className="mt-3 flex flex-wrap gap-1.5">
+										{tags.map((tag) => (
+											<span key={tag} className="chip">
+												{tag}
+											</span>
+										))}
+									</div>
 								)}
 
-								<button
-									onClick={() => handleUnlike(match.id)}
-									className="w-full mt-2 border border-[var(--csoc-line)] bg-white text-sm py-2.5 text-[var(--csoc-muted)] transition hover:border-[var(--csoc-spot)] hover:text-[var(--csoc-spot)] inline-flex items-center justify-center gap-2"
-								>
-									<HeartOff className="w-4 h-4" />
-									Unlike
-								</button>
-							</article>
-						))}
-					</div>
-				)}
+								{rows.length > 0 && (
+									<dl className="mt-4 grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-sm">
+										{rows.map((row) => (
+											<Fragment key={row.label}>
+												<dt className="muted">{row.label}</dt>
+												<dd className="min-w-0 truncate">
+													{row.href ? (
+														<a
+															href={row.href}
+															target={isWebUrl(row.href) ? '_blank' : undefined}
+															rel="noopener noreferrer"
+														>
+															{row.value}
+														</a>
+													) : (
+														row.value
+													)}
+												</dd>
+											</Fragment>
+										))}
+									</dl>
+								)}
 
-				<button
-					onClick={() => navigate('/')}
-					className="mt-10 csoc-btn-ghost inline-flex items-center gap-1 text-[var(--csoc-accent)]"
-				>
-					<ArrowLeft className="w-4 h-4" />
-					Back to home
-				</button>
-			</div>
-		</div>
+								<div className="mt-auto pt-5">
+									{openers[match.id] ? (
+										<div className="border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm">
+											<p>{openers[match.id]}</p>
+											<div className="mt-2 flex gap-4">
+												<button
+													onClick={() => copyOpener(match.id)}
+													className="btn-text text-xs"
+												>
+													{copied === match.id ? 'Copied' : 'Copy'}
+												</button>
+												<button
+													onClick={() => getOpener(match.id)}
+													disabled={openerLoading[match.id]}
+													className="btn-text text-xs"
+												>
+													{openerLoading[match.id] ? 'Writing…' : 'Try another'}
+												</button>
+											</div>
+										</div>
+									) : (
+										<button
+											onClick={() => getOpener(match.id)}
+											disabled={openerLoading[match.id]}
+											className="btn btn-secondary"
+										>
+											{openerLoading[match.id]
+												? 'Writing…'
+												: 'Suggest an opener'}
+										</button>
+									)}
+									{openerFailed[match.id] && (
+										<p className="mt-2 text-xs text-[var(--danger)]">
+											Couldn't get a suggestion right now.
+										</p>
+									)}
+								</div>
+							</li>
+						);
+					})}
+				</ul>
+			)}
+
+			{!loading && tab === 'liked' && liked.length > 0 && (
+				<ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+					{liked.map((user) => (
+						<li key={user.id} className="card p-6">
+							<div className="flex items-baseline justify-between gap-4">
+								<h2 className="font-display text-xl font-bold tracking-tight">
+									{user.username}
+								</h2>
+								<span className="muted text-xs">No reply yet</span>
+							</div>
+							{subtitle(user) && (
+								<p className="muted text-sm">{subtitle(user)}</p>
+							)}
+							{user.bio && (
+								<p className="mt-2 text-sm leading-relaxed">{user.bio}</p>
+							)}
+						</li>
+					))}
+				</ul>
+			)}
+		</AppShell>
 	);
 }
 

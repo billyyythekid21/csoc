@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, Check } from 'lucide-react';
+import AppShell from '../components/AppShell';
+import { formatEventTime, splitTags } from '../lib/format';
 
-interface Event {
+interface CampusEvent {
 	id: string;
 	title: string;
 	description: string;
@@ -23,9 +24,81 @@ const emptyForm = {
 	tags: '',
 };
 
+type EventForm = typeof emptyForm;
+
+function EventFields({
+	idPrefix,
+	form,
+	onChange,
+}: {
+	idPrefix: string;
+	form: EventForm;
+	onChange: (form: EventForm) => void;
+}) {
+	const bind = (key: keyof EventForm) => ({
+		id: `${idPrefix}-${key}`,
+		value: form[key],
+		onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+			onChange({ ...form, [key]: e.target.value }),
+	});
+
+	return (
+		<div className="grid gap-4 sm:grid-cols-2">
+			<div className="sm:col-span-2">
+				<label htmlFor={`${idPrefix}-title`} className="label">
+					Title
+				</label>
+				<input {...bind('title')} required className="input" />
+			</div>
+			<div>
+				<label htmlFor={`${idPrefix}-starts_at`} className="label">
+					When
+				</label>
+				<input
+					{...bind('starts_at')}
+					type="datetime-local"
+					required
+					className="input"
+				/>
+			</div>
+			<div>
+				<label htmlFor={`${idPrefix}-location`} className="label">
+					Where
+				</label>
+				<input
+					{...bind('location')}
+					placeholder="e.g. Woodside Building, room 2.01"
+					className="input"
+				/>
+			</div>
+			<div className="sm:col-span-2">
+				<label htmlFor={`${idPrefix}-description`} className="label">
+					Description
+				</label>
+				<textarea
+					{...bind('description')}
+					rows={4}
+					className="input resize-y"
+				/>
+			</div>
+			<div className="sm:col-span-2">
+				<label htmlFor={`${idPrefix}-tags`} className="label">
+					Tags
+				</label>
+				<input
+					{...bind('tags')}
+					placeholder="study, social, hackathon"
+					className="input"
+				/>
+				<p className="hint">Comma separated.</p>
+			</div>
+		</div>
+	);
+}
+
 function Events() {
 	const navigate = useNavigate();
-	const [events, setEvents] = useState<Event[]>([]);
+	const [events, setEvents] = useState<CampusEvent[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [showForm, setShowForm] = useState(false);
 	const [page, setPage] = useState(0);
@@ -53,11 +126,10 @@ function Events() {
 			setTotal(res.data.total);
 
 			const eventsWithRsvp = await Promise.all(
-				res.data.events.map(async (event: Event) => {
-					const rsvpRes = await axios.get(
-						`/events/${event.id}/rsvps`,
-						{ headers: { Authorization: `Bearer ${token}` } },
-					);
+				res.data.events.map(async (event: CampusEvent) => {
+					const rsvpRes = await axios.get(`/events/${event.id}/rsvps`, {
+						headers: { Authorization: `Bearer ${token}` },
+					});
 					const rsvps = rsvpRes.data;
 					return {
 						...event,
@@ -85,12 +157,6 @@ function Events() {
 		fetchEvents();
 	}, [page]);
 
-	const handleChange = (
-		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-	) => {
-		setForm({ ...form, [e.target.name]: e.target.value });
-	};
-
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		await axios.post('/events', form, {
@@ -101,7 +167,7 @@ function Events() {
 		fetchEvents();
 	};
 
-	const handleRsvp = async (event: Event) => {
+	const handleRsvp = async (event: CampusEvent) => {
 		if (event.user_rsvpd) {
 			await axios.delete(`/events/${event.id}/rsvp`, {
 				headers: { Authorization: `Bearer ${token}` },
@@ -124,7 +190,8 @@ function Events() {
 		fetchEvents();
 	};
 
-	const handleEdit = async (eventId: string) => {
+	const handleEdit = async (e: React.FormEvent, eventId: string) => {
+		e.preventDefault();
 		await axios.patch(`/events/${eventId}`, editForm, {
 			headers: { Authorization: `Bearer ${token}` },
 		});
@@ -132,260 +199,185 @@ function Events() {
 		fetchEvents();
 	};
 
-	if (loading)
-		return (
-			<div className="csoc-page flex items-center justify-center text-[var(--csoc-muted)]">
-				Loading…
-			</div>
-		);
+	const startEditing = (event: CampusEvent) => {
+		setEditingEventId(event.id);
+		setEditForm({
+			title: event.title,
+			description: event.description,
+			location: event.location || '',
+			starts_at: event.starts_at.slice(0, 16),
+			tags: event.tags || '',
+		});
+	};
+
+	const pageCount = Math.max(1, Math.ceil(total / limit));
 
 	return (
-		<div className="csoc-page">
-			<header className="csoc-header">
-				<button onClick={() => navigate('/')} className="csoc-brand">
-					csoc
-				</button>
-				<button
-					onClick={() => setShowForm(!showForm)}
-					className={`text-sm font-medium inline-flex items-center gap-1 ${
-						showForm ? 'csoc-btn-ghost' : 'csoc-btn'
-					}`}
-				>
-					{showForm ? (
-						'Cancel'
-					) : (
-						<>
-							<Plus className="w-4 h-4" />
-							Post event
-						</>
-					)}
-				</button>
-			</header>
-
-			<div className="max-w-lg mx-auto px-6 py-10">
-				<h1 className="font-display text-4xl font-extrabold tracking-tight mb-8">
+		<AppShell>
+			<div className="flex items-center justify-between gap-4">
+				<h1 className="font-display text-4xl font-extrabold tracking-tight">
 					Events
 				</h1>
+				{!showForm && (
+					<button onClick={() => setShowForm(true)} className="btn btn-primary">
+						New event
+					</button>
+				)}
+			</div>
 
-				{showForm && (
-					<form
-						onSubmit={handleSubmit}
-						className="csoc-panel mb-8 flex flex-col gap-4"
-					>
-						<h2 className="font-display text-lg font-bold">New event</h2>
-						<input
-							name="title"
-							placeholder="Title"
-							value={form.title}
-							onChange={handleChange}
-							required
-							className="csoc-input"
-						/>
-						<textarea
-							name="description"
-							placeholder="Description"
-							value={form.description}
-							onChange={handleChange}
-							rows={5}
-							className="csoc-input resize-none"
-						/>
-						<input
-							name="location"
-							placeholder="Location"
-							value={form.location}
-							onChange={handleChange}
-							className="csoc-input"
-						/>
-						<input
-							name="starts_at"
-							type="datetime-local"
-							value={form.starts_at}
-							onChange={handleChange}
-							required
-							className="csoc-input"
-						/>
-						<input
-							name="tags"
-							placeholder="Tags (e.g. study, cs, social)"
-							value={form.tags}
-							onChange={handleChange}
-							className="csoc-input"
-						/>
-						<button type="submit" className="csoc-btn inline-flex items-center justify-center gap-1">
-							<Plus className="w-4 h-4" />
+			{showForm && (
+				<form onSubmit={handleSubmit} className="card mt-6 max-w-3xl p-6">
+					<h2 className="mb-4 font-display text-lg font-bold">New event</h2>
+					<EventFields idPrefix="new" form={form} onChange={setForm} />
+					<div className="mt-5 flex gap-3">
+						<button type="submit" className="btn btn-primary">
 							Post event
 						</button>
-					</form>
-				)}
-
-				{events.length === 0 && (
-					<div className="py-20 text-center">
-						<p className="text-[var(--csoc-muted)] mb-1">No events yet.</p>
-						<p className="text-sm text-[var(--csoc-muted)]">Be the first to post one.</p>
+						<button
+							type="button"
+							onClick={() => {
+								setShowForm(false);
+								setForm(emptyForm);
+							}}
+							className="btn btn-secondary"
+						>
+							Cancel
+						</button>
 					</div>
-				)}
+				</form>
+			)}
 
-				<div className="divide-y divide-[var(--csoc-line)] border-y border-[var(--csoc-line)]">
+			{loading && <p className="muted mt-6 text-sm">Loading…</p>}
+
+			{!loading && events.length === 0 && (
+				<p className="muted mt-6 text-sm">
+					No events yet. Anything you post shows up here for everyone.
+				</p>
+			)}
+
+			{!loading && events.length > 0 && (
+				<ul className="mt-6 grid gap-6 md:grid-cols-2">
 					{events.map((event) => (
-						<article key={event.id} className="py-6">
-							<div className="flex items-start justify-between gap-4 mb-3">
-								<h2 className="font-display text-xl font-bold tracking-tight">
-									{event.title}
-								</h2>
-								<button
-									onClick={() => handleRsvp(event)}
-									className={`text-sm px-3 py-1.5 font-medium shrink-0 inline-flex items-center gap-1 transition ${
-										event.user_rsvpd
-											? 'bg-[var(--csoc-accent)]/10 text-[var(--csoc-accent)]'
-											: 'border border-[var(--csoc-line)] bg-white hover:border-[var(--csoc-accent)]'
-									}`}
-								>
-									<Check className="w-4 h-4" />
-									{event.user_rsvpd ? 'Going' : 'RSVP'}
-								</button>
-							</div>
-
-							{event.description && (
-								<p className="text-sm text-[var(--csoc-muted)] leading-relaxed mb-4">
-									{event.description}
-								</p>
-							)}
-
-							<div className="flex flex-col gap-2 text-sm">
-								<div className="flex gap-3">
-									<span className="text-[var(--csoc-muted)] w-14">By</span>
-									<span>{event.organizer}</span>
-								</div>
-								<div className="flex gap-3">
-									<span className="text-[var(--csoc-muted)] w-14">When</span>
-									<span>{new Date(event.starts_at).toLocaleString()}</span>
-								</div>
-								{event.location && (
-									<div className="flex gap-3">
-										<span className="text-[var(--csoc-muted)] w-14">Where</span>
-										<span>{event.location}</span>
-									</div>
-								)}
-								{event.tags && (
-									<div className="flex gap-3">
-										<span className="text-[var(--csoc-muted)] w-14">Tags</span>
-										<span>{event.tags}</span>
-									</div>
-								)}
-							</div>
-
-							{event.organizer === myUsername && (
-								<div className="flex gap-3 mt-4">
-									<button
-										onClick={() => {
-											setEditingEventId(event.id);
-											setEditForm({
-												title: event.title,
-												description: event.description,
-												location: event.location || '',
-												starts_at: event.starts_at.slice(0, 16),
-												tags: event.tags || '',
-											});
-										}}
-										className="csoc-btn-ghost text-xs"
-									>
-										Edit
-									</button>
-									<button
-										onClick={() => handleDelete(event.id)}
-										className="csoc-btn-ghost text-xs hover:text-[var(--csoc-spot)]"
-									>
-										Delete
-									</button>
-								</div>
-							)}
-
-							{editingEventId === event.id && (
-								<div className="mt-4 flex flex-col gap-3 border-t border-[var(--csoc-line)] pt-4">
-									<input
-										placeholder="Title"
-										value={editForm.title}
-										onChange={(e) =>
-											setEditForm({ ...editForm, title: e.target.value })
-										}
-										className="csoc-input"
+						<li
+							key={event.id}
+							className={`card flex flex-col p-6 ${
+								editingEventId === event.id ? 'md:col-span-2' : ''
+							}`}
+						>
+							{editingEventId === event.id ? (
+								<form onSubmit={(e) => handleEdit(e, event.id)}>
+									<EventFields
+										idPrefix={event.id}
+										form={editForm}
+										onChange={setEditForm}
 									/>
-									<textarea
-										placeholder="Description"
-										value={editForm.description}
-										onChange={(e) =>
-											setEditForm({ ...editForm, description: e.target.value })
-										}
-										rows={2}
-										className="csoc-input resize-none"
-									/>
-									<input
-										placeholder="Location"
-										value={editForm.location}
-										onChange={(e) =>
-											setEditForm({ ...editForm, location: e.target.value })
-										}
-										className="csoc-input"
-									/>
-									<input
-										type="datetime-local"
-										value={editForm.starts_at}
-										onChange={(e) =>
-											setEditForm({ ...editForm, starts_at: e.target.value })
-										}
-										className="csoc-input"
-									/>
-									<input
-										placeholder="Tags"
-										value={editForm.tags}
-										onChange={(e) =>
-											setEditForm({ ...editForm, tags: e.target.value })
-										}
-										className="csoc-input"
-									/>
-									<div className="flex gap-3 items-center">
-										<button
-											onClick={() => handleEdit(event.id)}
-											className="csoc-btn text-sm"
-										>
+									<div className="mt-4 flex gap-3">
+										<button type="submit" className="btn btn-primary">
 											Save
 										</button>
 										<button
+											type="button"
 											onClick={() => setEditingEventId(null)}
-											className="csoc-btn-ghost text-sm"
+											className="btn btn-secondary"
 										>
 											Cancel
 										</button>
 									</div>
-								</div>
-							)}
-						</article>
-					))}
-				</div>
+								</form>
+							) : (
+								<>
+									<div className="flex items-start justify-between gap-4">
+										<div className="min-w-0">
+											<p className="text-sm text-[var(--accent)]">
+												{formatEventTime(event.starts_at)}
+											</p>
+											<h2 className="mt-0.5 font-display text-xl font-bold tracking-tight">
+												{event.title}
+											</h2>
+											<p className="muted text-sm">
+												{[event.location, `posted by ${event.organizer}`]
+													.filter(Boolean)
+													.join(' · ')}
+											</p>
+										</div>
+										<button
+											onClick={() => handleRsvp(event)}
+											title={
+												event.user_rsvpd
+													? 'Click to cancel your RSVP'
+													: undefined
+											}
+											className={`btn shrink-0 ${
+												event.user_rsvpd ? 'btn-primary' : 'btn-secondary'
+											}`}
+										>
+											{event.user_rsvpd ? 'Going' : 'RSVP'}
+										</button>
+									</div>
 
-				{total > 0 && (
-					<div className="flex gap-4 mt-8 items-center">
-						<button
-							onClick={() => setPage((p) => p - 1)}
-							disabled={page === 0}
-							className="csoc-btn-ghost text-sm disabled:opacity-30"
-						>
-							← Previous
-						</button>
-						<span className="text-gray-600 text-sm">
-							{page + 1} of {Math.max(1, Math.ceil(total / limit))}
-						</span>
-						<button
-							onClick={() => setPage((p) => p + 1)}
-							disabled={(page + 1) * limit >= total}
-							className="csoc-btn-ghost text-sm disabled:opacity-30"
-						>
-							Next →
-						</button>
-					</div>
-				)}
-			</div>
-		</div>
+									{event.description && (
+										<p className="mt-3 whitespace-pre-line text-sm leading-relaxed">
+											{event.description}
+										</p>
+									)}
+
+									<div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-4 text-sm">
+										<span className="muted">{event.rsvp_count} going</span>
+										{splitTags(event.tags).length > 0 && (
+											<span className="flex flex-wrap gap-1.5">
+												{splitTags(event.tags).map((tag) => (
+													<span key={tag} className="chip">
+														{tag}
+													</span>
+												))}
+											</span>
+										)}
+										{event.organizer === myUsername && (
+											<span className="ml-auto flex gap-4">
+												<button
+													onClick={() => startEditing(event)}
+													className="btn-text"
+												>
+													Edit
+												</button>
+												<button
+													onClick={() => handleDelete(event.id)}
+													className="btn-text hover:text-[var(--danger)]"
+												>
+													Delete
+												</button>
+											</span>
+										)}
+									</div>
+								</>
+							)}
+						</li>
+					))}
+				</ul>
+			)}
+
+			{total > limit && (
+				<div className="mt-6 flex items-center gap-3 text-sm">
+					<button
+						onClick={() => setPage((p) => p - 1)}
+						disabled={page === 0}
+						className="btn btn-secondary"
+					>
+						Previous
+					</button>
+					<span className="muted">
+						Page {page + 1} of {pageCount}
+					</span>
+					<button
+						onClick={() => setPage((p) => p + 1)}
+						disabled={page + 1 >= pageCount}
+						className="btn btn-secondary"
+					>
+						Next
+					</button>
+				</div>
+			)}
+		</AppShell>
 	);
 }
 
