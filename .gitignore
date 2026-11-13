@@ -56,6 +56,9 @@ env/
 *.sql
 *.dump
 *.bak
+*.db
+*.sqlite
+*.sqlite3
 
 # Local secrets (VAPID keys, API credentials, etc. DO NOT COMMIT)
 .secrets/
@@ -97,3 +100,7 @@ temp/
 # Vercel (local CLI project linking, not needed in git)
 .vercel
 backend/.vercel
+
+# Claude Code (personal, per-machine; shared .claude/settings.json stays tracked)
+.claude/settings.local.json
+CLAUDE.local.md
